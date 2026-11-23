@@ -1,0 +1,8 @@
+# TruffleHog secret scan of the workspace, no network (no verification of found secrets).
+#   burrow exec trufflehog -- filesystem /work --no-update --no-verification --fail
+# No default arguments, so a `trufflehog` shim can call `burrow exec trufflehog -- "$@"`.
+NAME=trufflehog
+DESCRIPTION=TruffleHog secret scanner, no network (shimmable)
+IMAGE=localhost/burrow-preset-trufflehog:dev
+WORKSPACE_MODE=inherit:ro
+NETWORK=none
