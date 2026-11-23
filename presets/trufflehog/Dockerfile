@@ -2,5 +2,5 @@
 # Only a pinned base (tag for readers and Dependabot, multi-platform digest for what runs) and a
 # non-root user. Same pin as burrow-sandbox's packaging/scanners/Dockerfile, which this replaces
 # once burrow can run scanners as presets.
-FROM docker.io/trufflesecurity/trufflehog:3.99.8@sha256:674b2f187620a19df77f44cf9a7d77efcc581a5662accef2f2739cbb46ba4a3a
+FROM docker.io/trufflesecurity/trufflehog:3.99.9@sha256:2ec535840f860aa27f11fee20222fb790326ecd66325c96bd49d02ec6af46eca
 USER 65532:65532
