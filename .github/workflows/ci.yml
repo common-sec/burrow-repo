@@ -1,0 +1,70 @@
+name: CI
+
+# Every pull request and push: the static checks, then a build, smoke test and scan of each image
+# folder that changed (all of them on main and every week, because new vulnerabilities appear in
+# images that did not change). The same Makefile targets a developer runs (local first).
+# Only GitHub's own checkout action, pinned by commit SHA; nothing is installed on the runner:
+# podman is part of the runner image, every tool runs in a container pinned by digest.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: static checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.changed.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: make check
+      - name: Image folders to build
+        id: changed
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            names=$(sh scripts/changed.sh "$BASE")
+          else
+            names=$(sh scripts/changed.sh)
+          fi
+          echo "build: $names"
+          echo "matrix=$(sh scripts/changed.sh --json $names)" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: ${{ matrix.name }}
+    needs: check
+    if: needs.check.outputs.matrix != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ${{ fromJSON(needs.check.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: podman --version
+      - name: Build (linux/amd64; arm64 is built when publishing)
+        run: make build NAME=${{ matrix.name }}
+      - name: Smoke test (non-root, no capabilities, no network)
+        run: make smoke NAME=${{ matrix.name }}
+      - name: Scan (secrets fail; vulnerabilities reported)
+        run: make scan NAME=${{ matrix.name }}

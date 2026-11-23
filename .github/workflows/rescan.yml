@@ -1,0 +1,39 @@
+name: Rescan published
+
+# Every week, scans the newest active version of every published preset image by digest (from
+# the index branch): new vulnerabilities appear in images that did not change. Secrets fail;
+# vulnerabilities are reported. A finding is fixed by a newer pinned base or lockfile here (which
+# publishes a new revision), and a version that must not be used goes into YANKED.
+on:
+  schedule:
+    - cron: "29 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  rescan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the index branch
+        env:
+          TOKEN: ${{ github.token }}
+        run: sh scripts/index-branch.sh fetch .cache/index
+      - name: Log in to the registry (packages may be private)
+        env:
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$TOKEN" | podman login ghcr.io --username "$ACTOR" --password-stdin
+      - name: Scan the newest active image of each folder
+        run: |
+          refs=$(sh scripts/index-branch.sh current .cache/index)
+          [ -n "$refs" ] || { echo "nothing published yet"; exit 0; }
+          sh scripts/scan.sh $refs
+      - if: always()
+        run: podman logout ghcr.io || true

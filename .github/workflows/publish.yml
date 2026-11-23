@@ -1,0 +1,122 @@
+name: Publish
+
+# Publishes every image folder on main whose source is not in the index yet (docs/CONTRACT.md):
+#   plan     reads the index branch and lists the folders with new inputs
+#   push     builds, smoke-tests and scans each platform on its own native runner, then pushes it
+#   release  assembles the multi-platform manifest, pushes the version tag, writes the index
+#            entries (pinned presets and metadata) and commits them to the index branch
+# One run at a time (the index is append-only and revisions are counted from it). The index
+# branch is written only by this workflow: protect it so that only GitHub Actions can push.
+on:
+  push:
+    branches: [main]
+    paths: ["presets/**", "YANKED", "scripts/**"]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}/burrow-presets
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      names: ${{ steps.plan.outputs.names }}
+      index: ${{ steps.plan.outputs.index }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make check
+      - name: Read the index branch
+        env:
+          TOKEN: ${{ github.token }}
+        run: sh scripts/index-branch.sh fetch .cache/index
+      - name: Plan
+        id: plan
+        run: |
+          names=$(sh scripts/publish.sh plan .cache/index | tr '\n' ' ')
+          echo "to publish: ${names:-nothing}"
+          echo "names=$names" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(sh scripts/publish.sh matrix .cache/index)" >> "$GITHUB_OUTPUT"
+          echo "index=$(git -C .cache/index rev-parse HEAD 2>/dev/null || echo none)" >> "$GITHUB_OUTPUT"
+
+  push:
+    name: push ${{ matrix.name }} (${{ matrix.arch }})
+    needs: plan
+    if: needs.plan.outputs.names != ''
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the index at the planned commit
+        env:
+          TOKEN: ${{ github.token }}
+          AT: ${{ needs.plan.outputs.index }}
+        run: sh scripts/index-branch.sh fetch .cache/index "$AT"
+      - name: Log in to the registry
+        env:
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$TOKEN" | podman login ghcr.io --username "$ACTOR" --password-stdin
+      - name: Build, smoke test, scan, push
+        env:
+          NAME: ${{ matrix.name }}
+          ARCH: ${{ matrix.arch }}
+        run: sh scripts/publish.sh push "$NAME" "$ARCH" .cache/index
+      - if: always()
+        run: podman logout ghcr.io || true
+
+  release:
+    needs: [plan, push]
+    if: always() && needs.plan.result == 'success' && (needs.push.result == 'success' || needs.push.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the index at the planned commit
+        env:
+          TOKEN: ${{ github.token }}
+          AT: ${{ needs.plan.outputs.index }}
+        run: sh scripts/index-branch.sh fetch .cache/index "$AT"
+      - name: Log in to the registry
+        env:
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$TOKEN" | podman login ghcr.io --username "$ACTOR" --password-stdin
+      - name: Release (manifest list, version tag, index entries)
+        env:
+          NAMES: ${{ needs.plan.outputs.names }}
+        run: for n in $NAMES; do sh scripts/publish.sh release "$n" .cache/index; done
+      - name: Yanked versions, INDEX and SHA256SUMS
+        run: |
+          sh scripts/publish.sh status .cache/index
+          sh scripts/publish.sh index .cache/index
+      - name: Commit to the index branch
+        env:
+          TOKEN: ${{ github.token }}
+        run: sh scripts/index-branch.sh push .cache/index "publish $GITHUB_SHA"
+      - if: always()
+        run: podman logout ghcr.io || true

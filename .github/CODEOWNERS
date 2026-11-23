@@ -1,0 +1,3 @@
+# Everything that pins, builds or publishes third-party code is reviewed by the security team.
+# The team (created by J) must exist in the common-sec organisation and have write access here.
+*                         @common-sec/security

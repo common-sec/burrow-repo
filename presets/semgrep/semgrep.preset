@@ -1,0 +1,10 @@
+# Semgrep SAST of the workspace. It downloads its rule packs, so it gets its own proxy that allows
+# only Semgrep's registry (semgrep.dev: *unverified*, check on first use). Metrics are off.
+#   burrow exec semgrep -- semgrep scan --metrics=off --error --config p/secrets /work
+NAME=semgrep
+DESCRIPTION=Semgrep SAST, network only to its rule registry (shimmable)
+IMAGE=localhost/burrow-preset-semgrep:dev
+WORKSPACE_MODE=inherit:ro
+NETWORK=proxy
+ALLOW=semgrep.dev
+ENV=SEMGREP_SEND_METRICS=off,HOME=/tmp

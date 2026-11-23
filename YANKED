@@ -1,0 +1,4 @@
+# Published versions that must no longer be used: NAME VERSION REASON (docs/CONTRACT.md, "Yanking").
+# The publish pipeline marks them STATUS=yanked in the index; the images stay, so a pinned user is
+# told why instead of getting a missing image. Example:
+#   claude 2.1.325-r1 GHSA-xxxx-xxxx-xxxx in a bundled dependency; use 2.1.325-r2

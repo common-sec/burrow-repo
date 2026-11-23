@@ -1,0 +1,96 @@
+# Dependabot keeps every pin current (D1), the same rules as burrow-sandbox (its decision 0006):
+# checked every day; a 7-day cooldown on version updates (security updates skip it); minor and
+# patch grouped into one PR per ecosystem, majors one PR each; security updates grouped too (they
+# need "Dependabot security updates" on in Settings > Advanced Security). Reviews: the security
+# team, through .github/CODEOWNERS.
+# A merged update changes the folder's inputs, so the publish pipeline releases a new revision of
+# that image by itself (docs/CONTRACT.md). `make check` fails if a presets folder is missing here.
+version: 2
+
+updates:
+  # Base images of every preset image (presets/<name>/Dockerfile), pinned by tag and digest.
+  - package-ecosystem: docker
+    directories:
+      - /presets/claude
+      - /presets/codex
+      - /presets/hermes
+      - /presets/kali
+      - /presets/opencode
+      - /presets/pi
+      - /presets/semgrep
+      - /presets/trivy
+      - /presets/trufflehog
+      - /presets/ubuntu
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps(docker)"
+
+  # Agents installed from npm (package-lock.json: exact versions with integrity hashes).
+  - package-ecosystem: npm
+    directories:
+      - /presets/claude
+      - /presets/codex
+      - /presets/opencode
+      - /presets/pi
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps(npm)"
+
+  # Hermes Agent and its dependencies (requirements.txt with hashes). Regenerate the hashes from
+  # requirements.in if a PR leaves them stale.
+  - package-ecosystem: pip
+    directory: /presets/hermes
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps(pip)"
+
+  # GitHub Actions (pinned by commit SHA).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps(actions)"
